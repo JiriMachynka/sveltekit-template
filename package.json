@@ -14,7 +14,8 @@
 		"format:lint": "pnpm dlx @biomejs/biome check ./src",
 		"migrate": "drizzle-kit generate:pg --config=drizzle.config.ts",
 		"migration:push": "drizzle-kit push:pg --config=drizzle.config.ts",
-		"db:studio": "drizzle-kit studio"
+		"db:studio": "drizzle-kit studio",
+		"clean": "node ./scripts/clean.js"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "1.4.1",
