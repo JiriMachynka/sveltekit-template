@@ -1,40 +1,41 @@
-import { auth } from '$lib/server/lucia';
-import { redirect, type Handle } from '@sveltejs/kit';
-import type { HandleServerError } from '@sveltejs/kit';
-
-export const handleError: HandleServerError = ({ error, event }) => {
-	const errorId = crypto.randomUUID();
-
-	event.locals.error = error.toString() || undefined;
-	event.locals.errorStackTrace = error?.stack || undefined;
-	event.locals.errorId = errorId;
-
-	return {
-		message: 'An unexpected error occurred.',
-		errorId,
-	};
-};
+import type { Handle } from '@sveltejs/kit';
+import { lucia } from '$lib/server/lucia';
 
 export const handle: Handle = async ({ event, resolve }) => {
-	const startTimer = Date.now();
-	event.locals.startTimer = startTimer;
+	const sessionId = event.cookies.get(lucia.sessionCookieName);
 
-	event.locals.auth = auth.handleRequest(event);
-	if (event.locals?.auth) {
-		const session = await event.locals.auth.validate();
-		const user = session?.user;
-		if (user) {
-			event.locals.user = user;
-		}
-		if (event.route.id?.startsWith('/(protected)')) {
-			if (!user) redirect(302, '/auth/sign-in');
-			if (!user.verified) redirect(302, '/auth/verify/email');
-		}
-		if (event.route.id?.startsWith('/(admin)')) {
-			if (user?.role !== 'ADMIN') redirect(302, '/auth/sign-in');
-		}
+	if (!sessionId) {
+		event.locals.user = null;
+		event.locals.session = null;
+		return resolve(event);
 	}
 
-	const response = await resolve(event);
-	return response;
+	const { session, user } = await lucia.validateSession(sessionId);
+
+	if (!session) {
+		const sessionCookie = lucia.createBlankSessionCookie();
+		event.cookies.set(sessionCookie.name, sessionCookie.value, {
+			path: '.',
+			...sessionCookie.attributes,
+		});
+	}
+
+	if (session?.fresh) {
+		const sessionCookie = lucia.createSessionCookie(session.id);
+
+		event.cookies.set(sessionCookie.name, sessionCookie.value, {
+			path: '.',
+			...sessionCookie.attributes,
+		});
+	}
+
+	event.locals.user = user;
+	event.locals.session = session;
+
+	if (event.route.id?.startsWith('/(protected)')) {
+		if (!user) redirect(302, '/auth/sign-in');
+		if (!user.verified) redirect(302, '/auth/verify/email');
+	}
+
+	return resolve(event);
 };

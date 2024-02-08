@@ -4,6 +4,7 @@ import { db } from '$lib/db/db.js';
 import { Users } from '$lib/db/schema.js';
 import { eq } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
+import { setNotVerified } from '$lib/server/users';
 
 export const load: PageServerLoad = async ({ params }) => {
 	try {
@@ -15,19 +16,16 @@ export const load: PageServerLoad = async ({ params }) => {
 			.where(eq(Users.email, email))
 			.limit(1)
 			.then(async (user) => {
-				let heading = 'Email Verification Problem';
-				let message = 'A new email could not be sent. Please contact support if you feel this was an error.';
+				let heading = 'Problém s ověřením emailu';
+				let message = 'Nový e-mail se nepodařilo odeslat.';
 				if (user) {
-					heading = 'Email Verification Sent';
+					heading = 'Odeslaný ověřovací e-mail';
 					message =
-						'A new verification email was sent.  Please check your email for the message. (Check the spam folder if it is not in your inbox)';
-					await db
-						.update(Users)
-						.set({ verified: false })
-						.where(eq(Users.email, user[0].email));
+						'Byl odeslán nový ověřovací e-mail.  Zkontrolujte si prosím, zda ve své e-mailové schránce nenajdete tuto zprávu. (Pokud ji nemáte ve složce doručené pošty, zkontrolujte složku spam).';
+					await setNotVerified(user[0].email);
 
 					if (user[0].token) {
-						console.log(`Email sent to: ${user[0].email}`);
+						console.log(`Email poslán: ${user[0].email}`);
 						sendVerificationEmail(user[0].email, user[0].token);
 					}
 				}
@@ -39,8 +37,6 @@ export const load: PageServerLoad = async ({ params }) => {
 
 		return { result };
 	} catch (e) {
-		return fail(500, {
-			error: e,
-		});
+		return fail(500, { error: e });
 	}
 };

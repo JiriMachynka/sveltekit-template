@@ -4,6 +4,7 @@ import { db } from '$lib/db/db.js';
 import { eq } from 'drizzle-orm';
 import { Users } from '$lib/db/schema.js';
 import type { PageServerLoad } from './$types';
+import { setVerified } from '$lib/server/users';
 
 export const load: PageServerLoad = async ({ params }) => {
 	try {
@@ -13,21 +14,22 @@ export const load: PageServerLoad = async ({ params }) => {
 			.from(Users)
 			.where(eq(Users.token, token))
 			.then(async (user) => {
-				let heading = 'Email Verification Problem';
-				let message = 'Your email could not be verified. Please contact support if you feel this is an error.';
+				let heading = 'Problém s ověřením emailu';
+				let message = 'Váš email se nepodařilo ověřit.';
 				if (user) {
 					sendWelcomeEmail(user[0].email);
-					heading = 'Email Verified';
-					message = 'Your email has been verified. You can now <a href="/auth/sign-in" class="underline">sign in</a>';
-					await db.update(Users).set({ verified: true }).where(eq(Users.token, token));
+					heading = 'Email Ověřen';
+					message = 'Váš email byl ověřen. Nyní se můžete <a href="/auth/sign-in" class="underline">přihlásit</a>';
+					await setVerified(token);
 				}
-				return { heading: heading, message: message };
+				return {
+					heading,
+					message,
+				};
 			});
 
-		return { result };
+		return result;
 	} catch (e) {
-		return fail(500, {
-			error: e,
-		});
+		return fail(500, { error: e });
 	}
 };

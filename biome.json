@@ -17,7 +17,8 @@
 			"quoteStyle": "single",
 			"lineWidth": 120,
 			"arrowParentheses": "always",
-			"bracketSameLine": false
+			"bracketSameLine": false,
+			"quoteProperties": "asNeeded"
 		}
 	},
 	"linter": {

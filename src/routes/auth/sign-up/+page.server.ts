@@ -1,15 +1,18 @@
-import { fail, redirect, type Actions } from '@sveltejs/kit';
-import { setFlash } from 'sveltekit-flash-message/server';
-import { setError, superValidate } from 'sveltekit-superforms/server';
-import { auth } from '$lib/server/lucia';
+import { redirect, type Actions } from '@sveltejs/kit';
+import { message, setError, superValidate } from 'sveltekit-superforms/server';
+import { lucia } from '$lib/server/lucia';
 import { signUpSchema } from '$lib/config/zod-schemas';
 import { sendVerificationEmail } from '$lib/config/email-messages';
 import type { PageServerLoad } from './$types';
+import { Argon2id } from 'oslo/password';
+import { generateId } from 'lucia';
+import { checkIfEmailExists, createNewUser } from '$lib/server/users';
 
 export const load: PageServerLoad = async (event) => {
-	const session = await event.locals.auth.validate();
-	if (session) redirect(302, '/dashboard');
+	if (event.locals.session) redirect(302, '/tournaments');
+
 	const form = await superValidate(event, signUpSchema);
+
 	return { form };
 };
 
@@ -18,46 +21,53 @@ export const actions: Actions = {
 		const form = await superValidate(event, signUpSchema);
 
 		if (!form.valid) {
-			return fail(400, {
-				form,
+			return message(form, {
+				alertType: 'error',
+				alertText: 'Něco se pokazilo.',
 			});
 		}
 
-		if (form.data.password !== form.data.confirmPassword) {
-			return setError(form, 'confirmPassword', 'Hesla se neshodují.');
-		}
+		const { username, email, password, confirmPassword } = form.data;
 
 		try {
-			console.log('creating user');
-			const token = crypto.randomUUID();
+			const isEmailAlreadyRegistered = await checkIfEmailExists(email);
 
-			const user = await auth.createUser({
-				key: {
-					providerId: 'email',
-					providerUserId: form.data.email.toLowerCase(),
-					password: form.data.password,
-				},
-				attributes: {
-					email: form.data.email.toLowerCase(),
-					username: form.data.username,
-					verified: false,
-					receive_email: true,
-					token: token,
-				},
+			if (isEmailAlreadyRegistered) {
+				return setError(form, 'email', 'Email je již zaregistrován.');
+			}
+
+			if (password !== confirmPassword) {
+				return setError(form, 'confirmPassword', 'Hesla se neshodují.');
+			}
+
+			const userId = generateId(15);
+			const hashedPassword = await new Argon2id().hash(password);
+
+			const token = crypto.randomUUID();
+			await createNewUser({
+				id: userId,
+				username: username,
+				email: email,
+				password: hashedPassword,
+				token,
 			});
 
-			await sendVerificationEmail(form.data.email, token);
-			const session = await auth.createSession({ userId: user.userId, attributes: {} });
-			event.locals.auth.setSession(session);
-			setFlash(
-				{ type: 'success', message: 'Účet vytvořen. Prosím zkontrolujte si email pro ověření vašeho účtu.' },
-				event,
-			);
-		} catch (e) {
-			console.error(e);
-			return setError(form, 'email', 'Uživatel s tímto emailem již existuje.');
-		}
+			sendVerificationEmail(email, token);
 
-		return { form };
+			const session = await lucia.createSession(userId, {});
+			const sessionCookie = lucia.createSessionCookie(session.id);
+
+			event.cookies.set(sessionCookie.name, sessionCookie.value, {
+				path: '.',
+				...sessionCookie.attributes,
+			});
+
+			return;
+		} catch (_e) {
+			return message(form, {
+				alertType: 'error',
+				alertText: 'Něco se pokazilo.',
+			});
+		}
 	},
 };

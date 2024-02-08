@@ -1,15 +1,17 @@
 import { z } from 'zod';
 
 export const userSchema = z.object({
-	username: z.string({ required_error: 'Usename is required' }).min(1, { message: 'Username is required' }).trim(),
-	email: z.string({ required_error: 'Email is required' }).email({ message: 'Please enter a valid email address' }),
+	username: z.string({ required_error: 'Uživatelské jméno je vyžadováno' }).trim(),
+	email: z
+		.string({ required_error: 'Email je vyžadován' })
+		.email({ message: 'Zadejte prosím validní emailovou adresu' }),
 	password: z
-		.string({ required_error: 'Password is required' })
-		.min(6, { message: 'Password must be at least 6 characters' })
+		.string({ required_error: 'Heslo je vyžadováno' })
+		.min(6, { message: 'Heslo musí mít minimálně 6 znaků' })
 		.trim(),
 	confirmPassword: z
-		.string({ required_error: 'Password is required' })
-		.min(6, { message: 'Password must be at least 6 characters' })
+		.string({ required_error: 'Potvrzovací heslo je vyžadováno' })
+		.min(6, { message: 'Heslo musí mít minimálně 6 znaků' })
 		.trim(),
 	verified: z.boolean().default(false),
 	token: z.string().optional(),
@@ -40,12 +42,12 @@ export const userUpdatePasswordSchema = userSchema
 		if (confirmPassword !== password) {
 			ctx.addIssue({
 				code: 'custom',
-				message: 'Password and Confirm Password must match',
+				message: 'Hesla se musí shodovat',
 				path: ['password'],
 			});
 			ctx.addIssue({
 				code: 'custom',
-				message: 'Password and Confirm Password must match',
+				message: 'Hesla se musí shodovat',
 				path: ['confirmPassword'],
 			});
 		}

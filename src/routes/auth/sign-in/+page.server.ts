@@ -1,14 +1,13 @@
-import { fail, redirect } from '@sveltejs/kit';
-import { setError, superValidate } from 'sveltekit-superforms/server';
-import { auth } from '$lib/server/lucia';
+import { message, setError, superValidate } from 'sveltekit-superforms/server';
+import { lucia } from '$lib/server/lucia';
 import type { PageServerLoad, Actions } from './$types';
 import { signInSchema } from '$lib/config/zod-schemas';
+import { Argon2id } from 'oslo/password';
+import { findUser } from '$lib/server/users';
 
 export const load: PageServerLoad = async (event) => {
-	const session = await event.locals.auth.validate();
-
-	if (session) redirect(302, '/tournaments');
 	const form = await superValidate(event, signInSchema);
+
 	return { form };
 };
 
@@ -17,27 +16,30 @@ export const actions: Actions = {
 		const form = await superValidate(event, signInSchema);
 
 		if (!form.valid) {
-			return fail(400, {
-				form,
+			return message(form, {
+				alertType: 'error',
+				alertText: 'Něco se pokazilo.',
 			});
 		}
 
-		try {
-			const key = await auth.useKey('email', form.data.email.toLowerCase(), form.data.password);
-			const session = await auth.createSession({
-				userId: key.userId,
-				attributes: {},
-			});
-			event.locals.auth.setSession(session);
-			redirect(302, '/tournaments');
-		} catch (e) {
-			//TODO: need to return error message to client
-			console.error(e);
-			// email already in use
-			//const { fieldErrors: errors } = e.flatten();
-			return setError(form, 'Email nebo heslo je nesprávné.');
+		const { email, password } = form.data;
+		const existingUser = await findUser(email);
+
+		if (!existingUser) {
+			return setError(form, 'Uživatel neexistuje.');
+		}
+		const validPassword = await new Argon2id().verify(existingUser.password, password);
+
+		if (!validPassword) {
+			return setError(form, 'password', 'Špatné heslo.');
 		}
 
-		return { form };
+		const session = await lucia.createSession(existingUser.id, {});
+		const sessionCookie = lucia.createSessionCookie(session.id);
+
+		event.cookies.set(sessionCookie.name, sessionCookie.value, {
+			path: '.',
+			...sessionCookie.attributes,
+		});
 	},
 };

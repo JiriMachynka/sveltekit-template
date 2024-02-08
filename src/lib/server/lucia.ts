@@ -1,28 +1,38 @@
-import { lucia } from 'lucia';
-import { sveltekit } from 'lucia/middleware';
-import { pg } from '@lucia-auth/adapter-postgresql';
+import { Lucia, TimeSpan } from 'lucia';
+import { DrizzlePostgreSQLAdapter } from '@lucia-auth/adapter-drizzle';
+import { db } from '$lib/db/db';
 import { dev } from '$app/environment';
-import { pool } from '$lib/db/db';
+import { Users, session } from '$lib/db/schema';
 
-export const auth = lucia({
-	adapter: pg(pool, {
-		user: 'auth_user',
-		key: 'user_key',
-		session: 'user_session',
-	}),
-	env: dev ? 'DEV' : 'PROD',
-	middleware: sveltekit(),
+const adapter = new DrizzlePostgreSQLAdapter(db, session, Users);
+
+export const lucia = new Lucia(adapter, {
 	getUserAttributes: (data) => {
-		return {
-			userId: data.id,
-			email: data.email,
-			username: data.username,
-			role: data.role,
-			verified: data.verified,
-			receive_email: data.receive_email,
-			token: data.token,
-		};
+		return { ...data };
+	},
+	sessionExpiresIn: new TimeSpan(30, 'd'),
+	sessionCookie: {
+		name: 'session',
+		expires: false,
+		attributes: {
+			secure: !dev,
+		},
 	},
 });
 
-export type Auth = typeof auth;
+declare module 'lucia' {
+	interface Register {
+		Lucia: typeof lucia;
+		DatabaseUserAttributes: DatabaseUserAttributes;
+	}
+}
+
+type DatabaseUserAttributes = {
+	id: string;
+	name: string;
+	email: string;
+	username: string;
+	verified: boolean;
+	receive_email: boolean;
+	token: string;
+};
